@@ -1,0 +1,18 @@
+[package]
+name = "SmartCameraTethering-Server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rsraw-utils = {git = "https://github.com/anghenfil/rsraw-utils.git"}
+image = { version = "0.25", features = ["tiff", "jpeg"] }
+rsraw = "0.1.1"
+SmartCameraTethering2-shared-types  = {path = "/home/anghenfil/RustroverProjects/SmartCameraSharing-shared-types"}
+tokio = { version = "1", features = ["full"] }
+tokio-rustls = "0.26"
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pemfile = "2"
+rkyv = { version = "0.7.43", features = ["validation"] }
+bytecheck = "0.6.11"
+reqwest = { version = "0.12" }
+chrono = "0.4"
