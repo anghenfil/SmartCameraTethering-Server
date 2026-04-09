@@ -17,6 +17,3 @@ rkyv = { version = "0.7.43", features = ["validation"] }
 bytecheck = "0.6.11"
 reqwest = { version = "0.13" }
 chrono = "0.4"
-
-[patch."https://github.com/anghenfil/SmartCameraTethering2-shared-types.git"]
-SmartCameraTethering2-shared-types = { path = "shared-types" }
