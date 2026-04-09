@@ -13,8 +13,7 @@ use rustls::RootCertStore;
 use rkyv::Deserialize;
 use SmartCameraTethering2_shared_types::{
     ArchivedMessageToPostProcessor, ArchivedOutputDestination, ArchivedPostProcessingStep,
-    ArchivedOutputFormat, ArchivedBlendingMode,
-    MessageToCameraServer, MessageToPostProcessor,
+    MessageToCameraServer,
 };
 
 const BIND_ADDR: &str = "0.0.0.0:9000";
@@ -476,7 +475,7 @@ async fn process_raw_images(
                             std::fs::create_dir_all(&dir)?;
                             let stem = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
                             let out_path = unique_tiff_path(&dir, &stem);
-                            let filename = out_path.file_name().unwrap().to_string_lossy().into_owned();
+                            let _filename = out_path.file_name().unwrap().to_string_lossy().into_owned();
                             std::fs::copy(&tiff_path, &out_path)
                                 .map_err(|e| format!("Failed to copy to server storage: {}", e))?;
                             println!("Session {} saved permanently to {:?}", session_id, out_path);
