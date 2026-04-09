@@ -100,6 +100,54 @@ impl Session {
 
 type Sessions = Arc<Mutex<HashMap<u64, Session>>>;
 
+fn are_configs_equal(left: &[SessionConfig], right: &[SessionConfig]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    left.iter().zip(right.iter()).all(|(l, r)| {
+        l.trigger_every_n_images == r.trigger_every_n_images
+            && l.steps.len() == r.steps.len()
+            && l.steps.iter().zip(r.steps.iter()).all(|(ls, rs)| match (ls, rs) {
+                (
+                    ProcessingStep::Blend {
+                        number_of_images: ln,
+                        blending_mode: lm,
+                    },
+                    ProcessingStep::Blend {
+                        number_of_images: rn,
+                        blending_mode: rm,
+                    },
+                ) => {
+                    ln == rn && std::mem::discriminant(lm) == std::mem::discriminant(rm)
+                }
+                (
+                    ProcessingStep::Save { destination: ld },
+                    ProcessingStep::Save { destination: rd },
+                ) => match (ld, rd) {
+                    (OutputDest::Camera, OutputDest::Camera)
+                    | (OutputDest::SystemStorage, OutputDest::SystemStorage) => true,
+                    (OutputDest::ServerStorage(lp), OutputDest::ServerStorage(rp)) => lp == rp,
+                    _ => false,
+                },
+                (ProcessingStep::Return, ProcessingStep::Return) => true,
+                (
+                    ProcessingStep::Upload {
+                        base_url: l_base,
+                        username: l_user,
+                        password: l_pass,
+                    },
+                    ProcessingStep::Upload {
+                        base_url: r_base,
+                        username: r_user,
+                        password: r_pass,
+                    },
+                ) => l_base == r_base && l_user == r_user && l_pass == r_pass,
+                _ => false,
+            })
+    })
+}
+
 #[tokio::main]
 async fn main() {
     rustls::crypto::ring::default_provider().install_default()
@@ -305,17 +353,20 @@ where
                 }
                 let mut map = sessions.lock().await;
                 let session = map.entry(session_id).or_insert_with(Session::new);
+                let config_changed = !are_configs_equal(&session.configs, &new_configs);
                 session.configs = new_configs;
-                session.raw_image_paths.clear();
                 session.last_activity = Instant::now();
-                let temp_session_dir = PathBuf::from(TEMP_DIR).join(session_id.to_string());
-                if temp_session_dir.exists() {
-                    if let Err(e) = std::fs::remove_dir_all(&temp_session_dir) {
-                        eprintln!("Session {} failed to clear temp dir on config update: {:?}", session_id, e);
+                if config_changed {
+                    session.raw_image_paths.clear();
+                    let temp_session_dir = PathBuf::from(TEMP_DIR).join(session_id.to_string());
+                    if temp_session_dir.exists() {
+                        if let Err(e) = std::fs::remove_dir_all(&temp_session_dir) {
+                            eprintln!("Session {} failed to clear temp dir on config update: {:?}", session_id, e);
+                        }
                     }
-                }
-                if let Err(e) = std::fs::create_dir_all(&temp_session_dir) {
-                    eprintln!("Session {} failed to recreate temp dir on config update: {:?}", session_id, e);
+                    if let Err(e) = std::fs::create_dir_all(&temp_session_dir) {
+                        eprintln!("Session {} failed to recreate temp dir on config update: {:?}", session_id, e);
+                    }
                 }
             }
             ArchivedMessageToPostProcessor::CompressedRawImage(compressed_data) => {
