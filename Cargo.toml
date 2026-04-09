@@ -14,5 +14,5 @@ rustls = { version = "0.23", features = ["ring"] }
 rustls-pemfile = "2"
 rkyv = { version = "0.7.43", features = ["validation"] }
 bytecheck = "0.6.11"
-reqwest = { version = "0.12" }
+reqwest = { version = "0.13" }
 chrono = "0.4"
