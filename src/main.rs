@@ -30,7 +30,7 @@ struct SessionConfig {
     steps: Vec<ProcessingStep>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 enum OutputDest {
     Camera,
     SystemStorage,
@@ -118,9 +118,7 @@ fn are_configs_equal(left: &[SessionConfig], right: &[SessionConfig]) -> bool {
                         number_of_images: rn,
                         blending_mode: rm,
                     },
-                ) => {
-                    ln == rn && std::mem::discriminant(lm) == std::mem::discriminant(rm)
-                }
+                ) => ln == rn && std::mem::discriminant(lm) == std::mem::discriminant(rm),
                 (
                     ProcessingStep::Save { destination: ld },
                     ProcessingStep::Save { destination: rd },
@@ -351,6 +349,14 @@ where
                     println!("Session {} received config: trigger every {} images, {} steps.", session_id, trigger_every_n_images, steps.len());
                     new_configs.push(SessionConfig { trigger_every_n_images, steps });
                 }
+                if new_configs.is_empty() {
+                    eprintln!(
+                        "Session {} received empty config list; keeping previous active config.",
+                        session_id
+                    );
+                    continue;
+                }
+
                 let mut map = sessions.lock().await;
                 let session = map.entry(session_id).or_insert_with(Session::new);
                 let config_changed = !are_configs_equal(&session.configs, &new_configs);
