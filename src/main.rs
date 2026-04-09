@@ -17,11 +17,11 @@ use SmartCameraTethering2_shared_types::{
 };
 
 const BIND_ADDR: &str = "0.0.0.0:9000";
-const CERT_PATH: &str = "certs/client2.crt";
-const KEY_PATH: &str = "certs/client2.key";
-const CA_PATH: &str = "certs/root.crt";
+const CERT_PATH: &str = "/certs/client2.crt";
+const KEY_PATH: &str = "/certs/client2.key";
+const CA_PATH: &str = "/certs/root.crt";
 const TEMP_DIR: &str = "temp";
-const PERMANENT_DIR: &str = "saved";
+const PERMANENT_DIR: &str = "/saved";
 
 /// Per-config trigger info extracted from archived PostProcessingConfig
 #[derive(Clone)]
