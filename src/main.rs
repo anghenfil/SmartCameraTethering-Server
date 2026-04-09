@@ -306,6 +306,17 @@ where
                 let mut map = sessions.lock().await;
                 let session = map.entry(session_id).or_insert_with(Session::new);
                 session.configs = new_configs;
+                session.raw_image_paths.clear();
+                session.last_activity = Instant::now();
+                let temp_session_dir = PathBuf::from(TEMP_DIR).join(session_id.to_string());
+                if temp_session_dir.exists() {
+                    if let Err(e) = std::fs::remove_dir_all(&temp_session_dir) {
+                        eprintln!("Session {} failed to clear temp dir on config update: {:?}", session_id, e);
+                    }
+                }
+                if let Err(e) = std::fs::create_dir_all(&temp_session_dir) {
+                    eprintln!("Session {} failed to recreate temp dir on config update: {:?}", session_id, e);
+                }
             }
             ArchivedMessageToPostProcessor::CompressedRawImage(compressed_data) => {
                 let compressed_bytes: Vec<u8> = compressed_data
