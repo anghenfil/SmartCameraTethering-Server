@@ -8,6 +8,7 @@ rsraw-utils = {git = "https://github.com/anghenfil/rsraw-utils.git"}
 image = { version = "0.25", features = ["tiff", "jpeg"] }
 rsraw = "0.1.1"
 SmartCameraTethering2-shared-types  = {git = "https://github.com/anghenfil/SmartCameraTethering2-shared-types.git"}
+zstd = "0.13"
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = "0.26"
 rustls = { version = "0.23", features = ["ring"] }
@@ -16,3 +17,6 @@ rkyv = { version = "0.7.43", features = ["validation"] }
 bytecheck = "0.6.11"
 reqwest = { version = "0.13" }
 chrono = "0.4"
+
+[patch."https://github.com/anghenfil/SmartCameraTethering2-shared-types.git"]
+SmartCameraTethering2-shared-types = { path = "shared-types" }

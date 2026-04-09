@@ -307,78 +307,99 @@ where
                 let session = map.entry(session_id).or_insert_with(Session::new);
                 session.configs = new_configs;
             }
+            ArchivedMessageToPostProcessor::CompressedRawImage(compressed_data) => {
+                let compressed_bytes: Vec<u8> = compressed_data
+                    .deserialize(&mut rkyv::de::deserializers::SharedDeserializeMap::new())
+                    .map_err(|e| format!("Deserialize compressed raw bytes error: {:?}", e))?;
+                let raw_bytes = zstd::decode_all(std::io::Cursor::new(&compressed_bytes))
+                    .map_err(|e| format!("Zstd decompression error: {:?}", e))?;
+                println!("Session {} received compressed raw image ({} -> {} bytes).", session_id, compressed_bytes.len(), raw_bytes.len());
+                handle_raw_bytes(raw_bytes, session_id, &sessions, &mut stream).await?;
+            }
             ArchivedMessageToPostProcessor::RawImage(raw_data) => {
                 let raw_bytes: Vec<u8> = raw_data
                     .deserialize(&mut rkyv::de::deserializers::SharedDeserializeMap::new())
                     .map_err(|e| format!("Deserialize raw bytes error: {:?}", e))?;
+                handle_raw_bytes(raw_bytes, session_id, &sessions, &mut stream).await?;
+            }
+        }
+    }
+}
 
-                // Write raw bytes to temp/<session_id>/<index>.raw
-                let temp_session_dir = PathBuf::from(TEMP_DIR).join(session_id.to_string());
-                std::fs::create_dir_all(&temp_session_dir)
-                    .map_err(|e| format!("Failed to create session temp dir: {:?}", e))?;
+async fn handle_raw_bytes<S>(
+    raw_bytes: Vec<u8>,
+    session_id: u64,
+    sessions: &Arc<Mutex<HashMap<u64, Session>>>,
+    stream: &mut S,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+where
+    S: AsyncWriteExt + Unpin,
+{
+    // Write raw bytes to temp/<session_id>/<index>.raw
+    let temp_session_dir = PathBuf::from(TEMP_DIR).join(session_id.to_string());
+    std::fs::create_dir_all(&temp_session_dir)
+        .map_err(|e| format!("Failed to create session temp dir: {:?}", e))?;
 
-                let (image_count, configs_snapshot): (usize, Vec<SessionConfig>) = {
-                    let mut map = sessions.lock().await;
-                    let session = map.entry(session_id).or_insert_with(Session::new);
-                    let index = session.raw_image_paths.len();
-                    let raw_path = temp_session_dir.join(format!("{}.raw", index));
-                    std::fs::write(&raw_path, &raw_bytes)
-                        .map_err(|e| format!("Failed to write raw to temp: {:?}", e))?;
-                    println!(
-                        "Session {} received raw image ({} bytes), stored at {:?}.",
-                        session_id, raw_bytes.len(), raw_path
-                    );
-                    session.raw_image_paths.push(raw_path);
-                    session.last_activity = Instant::now();
-                    (session.raw_image_paths.len(), session.configs.clone())
-                };
+    let (image_count, configs_snapshot): (usize, Vec<SessionConfig>) = {
+        let mut map = sessions.lock().await;
+        let session = map.entry(session_id).or_insert_with(Session::new);
+        let index = session.raw_image_paths.len();
+        let raw_path = temp_session_dir.join(format!("{}.raw", index));
+        std::fs::write(&raw_path, &raw_bytes)
+            .map_err(|e| format!("Failed to write raw to temp: {:?}", e))?;
+        println!(
+            "Session {} received raw image ({} bytes), stored at {:?}.",
+            session_id, raw_bytes.len(), raw_path
+        );
+        session.raw_image_paths.push(raw_path);
+        session.last_activity = Instant::now();
+        (session.raw_image_paths.len(), session.configs.clone())
+    };
 
-                // Check each config's trigger
-                for config in &configs_snapshot {
-                    let n = config.trigger_every_n_images as usize;
-                    if n == 0 {
-                        continue;
+    // Check each config's trigger
+    for config in &configs_snapshot {
+        let n = config.trigger_every_n_images as usize;
+        if n == 0 {
+            continue;
+        }
+        if image_count % n == 0 {
+            println!(
+                "Session {} auto-triggering post-processing after {} images.",
+                session_id, image_count
+            );
+            // Collect the last N raw image paths for processing
+            let raws_to_process = {
+                let map = sessions.lock().await;
+                if let Some(session) = map.get(&session_id) {
+                    let start = session.raw_image_paths.len().saturating_sub(n);
+                    session.raw_image_paths[start..].to_vec()
+                } else {
+                    vec![]
+                }
+            };
+
+            if raws_to_process.is_empty() {
+                continue;
+            }
+
+            match process_raw_images(raws_to_process, config.steps.clone(), session_id, image_count).await {
+                Ok((maybe_jpeg, system_files)) => {
+                    for (filename, data) in system_files {
+                        let msg = MessageToCameraServer::SaveToSystemStorage { filename, data };
+                        send_message(stream, &msg).await?;
                     }
-                    if image_count % n == 0 {
-                        println!(
-                            "Session {} auto-triggering post-processing after {} images.",
-                            session_id, image_count
-                        );
-                        // Collect the last N raw image paths for processing
-                        let raws_to_process = {
-                            let map = sessions.lock().await;
-                            if let Some(session) = map.get(&session_id) {
-                                let start = session.raw_image_paths.len().saturating_sub(n);
-                                session.raw_image_paths[start..].to_vec()
-                            } else {
-                                vec![]
-                            }
-                        };
-
-                        if raws_to_process.is_empty() {
-                            continue;
-                        }
-
-                        match process_raw_images(raws_to_process, config.steps.clone(), session_id, image_count).await {
-                            Ok((maybe_jpeg, system_files)) => {
-                                for (filename, data) in system_files {
-                                    let msg = MessageToCameraServer::SaveToSystemStorage { filename, data };
-                                    send_message(&mut stream, &msg).await?;
-                                }
-                                if let Some(processed_bytes) = maybe_jpeg {
-                                    let response = MessageToCameraServer::ReturnedImage(processed_bytes);
-                                    send_message(&mut stream, &response).await?;
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("Session {} post-processing error: {:?}", session_id, e);
-                            }
-                        }
+                    if let Some(processed_bytes) = maybe_jpeg {
+                        let response = MessageToCameraServer::ReturnedImage(processed_bytes);
+                        send_message(stream, &response).await?;
                     }
+                }
+                Err(e) => {
+                    eprintln!("Session {} post-processing error: {:?}", session_id, e);
                 }
             }
         }
     }
+    Ok(())
 }
 
 
