@@ -7,7 +7,7 @@ edition = "2024"
 rsraw-utils = {git = "https://github.com/anghenfil/rsraw-utils.git"}
 image = { version = "0.25", features = ["tiff", "jpeg"] }
 rsraw = "0.1.1"
-SmartCameraTethering2-shared-types  = {path = "/home/anghenfil/RustroverProjects/SmartCameraSharing-shared-types"}
+SmartCameraTethering2-shared-types  = {git = "https://github.com/anghenfil/SmartCameraTethering2-shared-types.git"}
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = "0.26"
 rustls = { version = "0.23", features = ["ring"] }
